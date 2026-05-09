@@ -144,7 +144,3 @@ If you want **more human-like Chinese voices** and you can accept a much larger 
 - **App size**: most of the size comes from the Chinese model(s). / **App 体积**：大部分体积都会来自中文模型本身。
 - **Performance**: first-sentence latency depends on device + model; consider caching / model warm-up. / **性能**：首句延迟取决于设备和模型，可考虑缓存或预热模型。
 - **Licenses**: you must track the license for Piper, ONNX Runtime, and the selected voice model. / **许可证**：需要分别确认 Piper、ONNX Runtime 和所选语音模型的许可证要求。
-
-If you want, tell me your target iOS version and whether you prefer “best quality” vs “smaller model”, and I’ll pin down a concrete model choice and a step-by-step file-level integration guide.
-
-如果你愿意，可以告诉我你的目标 iOS 版本，以及你更偏向“最佳音质”还是“更小模型”，我可以继续帮你确定更具体的模型选择，并给出按文件拆解的集成步骤。
