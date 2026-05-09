@@ -16,6 +16,10 @@ import AppKit
 
 struct ContentView: View {
     @State private var textToRead = ""
+    @State private var pagedDocument: PagedDocument = .empty
+    @State private var currentPageIndex = 0
+    @State private var textViewResetToken = 0
+    @State private var pageJumpText = "1"
     @State private var isShowingFilePicker = false
     @State private var isShowingPinyinOverridePicker = false
     @State private var isShowingSettings = false
@@ -37,6 +41,25 @@ struct ContentView: View {
 
     private var trimmedText: String {
         textToRead.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var currentPage: ReaderPage? {
+        pagedDocument.page(at: currentPageIndex)
+    }
+
+    private var currentPageText: String {
+        currentPage?.text ?? ""
+    }
+
+    private var trimmedCurrentPageText: String {
+        currentPageText.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var currentPageTextBinding: Binding<String> {
+        Binding(
+            get: { currentPageText },
+            set: { updateCurrentPageText($0) }
+        )
     }
 
     private var primaryButtonTitle: String {
@@ -71,23 +94,49 @@ struct ContentView: View {
     }
 
     private var editorHighlightedRanges: [NSRange] {
-        guard let range = pinyinOverrideMismatchDiagnostic?.currentTextHighlightRange else {
+        guard let mismatchRange = pinyinOverrideMismatchDiagnostic?.currentTextHighlightRange,
+              let currentPage else {
             return []
         }
-        return [range]
+
+        let intersection = NSIntersectionRange(mismatchRange, currentPage.utf16Range)
+        guard intersection.length > 0 else { return [] }
+
+        return [
+            NSRange(
+                location: intersection.location - currentPage.utf16Range.location,
+                length: intersection.length
+            )
+        ]
+    }
+
+    private var canGoToPreviousPage: Bool {
+        currentPageIndex > 0
+    }
+
+    private var canGoToNextPage: Bool {
+        currentPageIndex + 1 < pagedDocument.pageCount
+    }
+
+    private var pageIndicatorText: String {
+        let current = pagedDocument.pageCount == 0 ? 0 : currentPageIndex + 1
+        return "第 \(current) / \(pagedDocument.pageCount) 页"
+    }
+
+    private var enteredPageIndex: Int? {
+        guard pagedDocument.pageCount > 0 else { return nil }
+        let trimmed = pageJumpText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let pageNumber = Int(trimmed), pageNumber >= 1 else { return nil }
+        return min(max(pageNumber - 1, 0), pagedDocument.pageCount - 1)
+    }
+
+    private var canJumpToEnteredPage: Bool {
+        guard let enteredPageIndex else { return false }
+        return enteredPageIndex != currentPageIndex
     }
 
     private let placeholderText = "在这里输入文本或从文件中加载。"
-    private let importableTextTypes: [UTType] = {
-        var types: [UTType] = [.plainText, .text]
-        if let utf8PlainText = UTType(filenameExtension: "txt") {
-            types.append(utf8PlainText)
-        }
-        if let markdown = UTType(filenameExtension: "md") {
-            types.append(markdown)
-        }
-        return Array(Set(types))
-    }()
+    private let importableTextTypes = DocumentTextExtractor.supportedContentTypes
 
     private let editorFont: Font = .system(.body, design: .default)
     private let editorLineSpacing: CGFloat = 6
@@ -156,32 +205,34 @@ struct ContentView: View {
 
 #if canImport(UIKit)
                 ReadOnlyTextView(
-                    text: $textToRead,
+                    text: currentPageTextBinding,
                     isEditable: !speechManager.isPlaybackActive,
                     font: UIFont.preferredFont(forTextStyle: .body),
                     textColor: UIColor.label,
                     backgroundColor: .clear,
                     lineSpacing: editorLineSpacing,
                     highlightedRanges: editorHighlightedRanges,
-                    isFocused: $isEditorFocused
+                    isFocused: $isEditorFocused,
+                    scrollResetToken: textViewResetToken
                 )
                 .padding(.horizontal, 12)
                 .padding(.vertical, 12)
 #elseif canImport(AppKit)
                 ReadOnlyTextView(
-                    text: $textToRead,
+                    text: currentPageTextBinding,
                     isEditable: !speechManager.isPlaybackActive,
                     font: NSFont.preferredFont(forTextStyle: .body),
                     textColor: NSColor.labelColor,
                     backgroundColor: .clear,
                     lineSpacing: editorLineSpacing,
                     highlightedRanges: editorHighlightedRanges,
-                    isFocused: $isEditorFocused
+                    isFocused: $isEditorFocused,
+                    scrollResetToken: textViewResetToken
                 )
                 .padding(.horizontal, 12)
                 .padding(.vertical, 12)
 #else
-                TextEditor(text: $textToRead)
+                TextEditor(text: currentPageTextBinding)
                     .font(editorFont)
                     .lineSpacing(editorLineSpacing)
                     .padding(.horizontal, 12)
@@ -207,6 +258,66 @@ struct ContentView: View {
             )
             .shadow(color: .black.opacity(0.06), radius: 8, x: 0, y: 2)
             .padding(.top, 5)
+
+            HStack(spacing: 12) {
+                Button("首页") {
+                    goToFirstPage()
+                }
+                .disabled(!canGoToPreviousPage)
+                .keyboardShortcut(.leftArrow, modifiers: [.command])
+
+                Button("上一页") {
+                    goToPreviousPage()
+                }
+                .disabled(!canGoToPreviousPage)
+                .keyboardShortcut(.leftArrow, modifiers: [.option])
+
+                Text(pageIndicatorText)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
+
+                HStack(spacing: 8) {
+                    TextField("页码", text: $pageJumpText)
+#if canImport(AppKit)
+                        .textFieldStyle(.roundedBorder)
+                        .frame(width: 68)
+#else
+                        .textFieldStyle(.roundedBorder)
+                        .frame(width: 64)
+#endif
+                        .multilineTextAlignment(.trailing)
+                        .onSubmit {
+                            jumpToEnteredPage()
+                        }
+
+                    Button("跳转") {
+                        jumpToEnteredPage()
+                    }
+                    .disabled(!canJumpToEnteredPage)
+                }
+
+                Button("下一页") {
+                    goToNextPage()
+                }
+                .disabled(!canGoToNextPage)
+                .keyboardShortcut(.rightArrow, modifiers: [.option])
+
+                Button("末页") {
+                    goToLastPage()
+                }
+                .disabled(!canGoToNextPage)
+                .keyboardShortcut(.rightArrow, modifiers: [.command])
+
+                Spacer()
+
+                if let currentPage {
+                    Text("本页 \(currentPage.text.count) 字")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .padding(.horizontal, 4)
 
             HStack {
                 Button("从文件加载") {
@@ -238,7 +349,7 @@ struct ContentView: View {
                 Button(primaryButtonTitle) {
                     switch speechManager.speechState {
                     case .idle:
-                        speechManager.startReading(text: textToRead)
+                        speechManager.startReading(text: currentPageText)
                     case .reading:
                         speechManager.pauseReading()
                     case .paused:
@@ -246,7 +357,7 @@ struct ContentView: View {
                     }
                 }
                 .padding()
-                .disabled(speechManager.speechState == .idle && trimmedText.isEmpty)
+                .disabled(speechManager.speechState == .idle && trimmedCurrentPageText.isEmpty)
 
                 if speechManager.isPlaybackActive {
                     Button("停止") {
@@ -351,7 +462,7 @@ struct ContentView: View {
         isExportingAudio = true
         Task {
             do {
-                let exportedAudio = try await speechManager.exportCurrentTextAudio(text: textToRead)
+                let exportedAudio = try await speechManager.exportCurrentTextAudio(text: currentPageText)
                 exportResultTitle = "导出成功"
                 exportResultMessage = "已保存为\(exportedAudio.formatDescription)：\n\(exportedAudio.fileURL.path)"
 #if canImport(AppKit)
@@ -370,8 +481,8 @@ struct ContentView: View {
     private func presentTextFilePicker() {
 #if canImport(AppKit)
         let panel = NSOpenPanel()
-        panel.title = "选择文本文件"
-        panel.message = "请选择要加载到编辑器中的文本文件。"
+        panel.title = "选择文档"
+        panel.message = "请选择要加载到编辑器中的文档。支持 TXT、Markdown、JSON、CSV、XML、HTML、RTF、Word、ODT、PDF 等常见格式。"
         panel.prompt = "加载"
         panel.canChooseFiles = true
         panel.canChooseDirectories = false
@@ -397,7 +508,8 @@ struct ContentView: View {
         }
 
         do {
-            textToRead = try loadTextFileContents(from: url)
+            let importedText = try DocumentTextExtractor.extractText(from: url)
+            applyDocumentText(importedText, preferredPageIndex: 0, resetScrollPosition: true)
         } catch {
             fileLoadResultTitle = "加载失败"
             fileLoadResultMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
@@ -405,46 +517,91 @@ struct ContentView: View {
         }
     }
 
-    private func loadTextFileContents(from url: URL) throws -> String {
-        let data = try Data(contentsOf: url)
 
-        let encodings: [String.Encoding] = [
-            .utf8,
-            .utf16,
-            .utf16LittleEndian,
-            .utf16BigEndian,
-            .unicode,
-            .init(cfEncoding: .GB_18030_2000),
-            .init(cfEncoding: .big5),
-            .init(cfEncoding: .EUC_CN),
-        ]
-
-        for encoding in encodings {
-            if let string = String(data: data, encoding: encoding) {
-                return ReaderTextCanonicalizer.normalizeLineEndingsAndBOM(string)
-            }
+    private func updateCurrentPageText(_ newPageText: String) {
+        guard let currentPage else {
+            applyDocumentText(newPageText, preferredPageIndex: 0)
+            return
         }
 
-        throw TextFileLoadError.unsupportedEncoding(url.lastPathComponent)
+        var updatedText = textToRead
+        updatedText.replaceSubrange(currentPage.range, with: newPageText)
+        applyDocumentText(updatedText, anchorUTF16Location: currentPage.utf16Range.location)
     }
-}
 
-private enum TextFileLoadError: LocalizedError {
-    case unsupportedEncoding(String)
+    private func applyDocumentText(
+        _ newText: String,
+        anchorUTF16Location: Int? = nil,
+        preferredPageIndex: Int? = nil,
+        resetScrollPosition: Bool = false
+    ) {
+        textToRead = newText
+        pagedDocument = ReaderPaginator.paginate(newText)
 
-    var errorDescription: String? {
-        switch self {
-        case .unsupportedEncoding(let filename):
-            return "无法读取文件“\(filename)”。目前支持 UTF-8 / UTF-16 / GB18030 / Big5 / EUC-CN 等常见文本编码。"
+        if let preferredPageIndex {
+            currentPageIndex = pagedDocument.clampedPageIndex(preferredPageIndex)
+        } else if let anchorUTF16Location {
+            currentPageIndex = pagedDocument.pageIndex(containingUTF16Location: anchorUTF16Location)
+        } else {
+            currentPageIndex = 0
+        }
+
+        syncPageJumpField()
+
+        if resetScrollPosition {
+            textViewResetToken &+= 1
         }
     }
-}
 
-private extension String.Encoding {
-    init(cfEncoding: CFStringEncodings) {
-        self = String.Encoding(rawValue: CFStringConvertEncodingToNSStringEncoding(CFStringEncoding(cfEncoding.rawValue)))
+    private func goToPreviousPage() {
+        guard canGoToPreviousPage else { return }
+        changePage(to: currentPageIndex - 1)
+    }
+
+    private func goToFirstPage() {
+        guard canGoToPreviousPage else { return }
+        changePage(to: 0)
+    }
+
+    private func goToNextPage() {
+        guard canGoToNextPage else { return }
+        changePage(to: currentPageIndex + 1)
+    }
+
+    private func goToLastPage() {
+        guard canGoToNextPage else { return }
+        changePage(to: pagedDocument.pageCount - 1)
+    }
+
+    private func changePage(to index: Int) {
+        let clampedIndex = pagedDocument.clampedPageIndex(index)
+        guard clampedIndex != currentPageIndex else { return }
+
+        if speechManager.isPlaybackActive {
+            speechManager.stopReading()
+        }
+
+        currentPageIndex = clampedIndex
+        syncPageJumpField()
+        isEditorFocused = false
+        textViewResetToken &+= 1
+    }
+
+    private func jumpToEnteredPage() {
+        guard let enteredPageIndex else {
+            syncPageJumpField()
+            return
+        }
+
+        changePage(to: enteredPageIndex)
+    }
+
+    private func syncPageJumpField() {
+        let displayPage = pagedDocument.pageCount == 0 ? 1 : currentPageIndex + 1
+        pageJumpText = String(displayPage)
     }
 }
+
 
 #Preview {
     ContentView(speechManager: SpeechManager(engine: MockTTSEngine()), readerSettings: ReaderSettings())

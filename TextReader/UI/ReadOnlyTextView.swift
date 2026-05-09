@@ -16,6 +16,7 @@ struct ReadOnlyTextView: UIViewRepresentable {
     var highlightedRanges: [NSRange] = []
     var highlightBackgroundColor: UIColor = UIColor.systemRed.withAlphaComponent(0.18)
     var isFocused: Binding<Bool>? = nil
+    var scrollResetToken: Int = 0
 
     func makeUIView(context: Context) -> UITextView {
         let tv = UITextView()
@@ -59,6 +60,11 @@ struct ReadOnlyTextView: UIViewRepresentable {
         }
 
         applyParagraphStyle(to: uiView)
+
+        if context.coordinator.lastScrollResetToken != scrollResetToken {
+            context.coordinator.lastScrollResetToken = scrollResetToken
+            uiView.setContentOffset(.zero, animated: false)
+        }
     }
 
     func makeCoordinator() -> Coordinator {
@@ -68,10 +74,12 @@ struct ReadOnlyTextView: UIViewRepresentable {
     final class Coordinator: NSObject, UITextViewDelegate {
         @Binding var text: String
         var isFocused: Binding<Bool>?
+        var lastScrollResetToken: Int
 
         init(text: Binding<String>, isFocused: Binding<Bool>?) {
             _text = text
             self.isFocused = isFocused
+            self.lastScrollResetToken = 0
         }
 
         func textViewDidBeginEditing(_ textView: UITextView) {
@@ -128,6 +136,7 @@ struct ReadOnlyTextView: NSViewRepresentable {
     var highlightedRanges: [NSRange] = []
     var highlightBackgroundColor: NSColor = NSColor.systemRed.withAlphaComponent(0.18)
     var isFocused: Binding<Bool>? = nil
+    var scrollResetToken: Int = 0
 
     func makeNSView(context: Context) -> NSScrollView {
         let scrollView = NSScrollView()
@@ -173,6 +182,12 @@ struct ReadOnlyTextView: NSViewRepresentable {
         }
 
         applyParagraphStyle(to: textView)
+
+        if context.coordinator.lastScrollResetToken != scrollResetToken {
+            context.coordinator.lastScrollResetToken = scrollResetToken
+            nsView.contentView.scroll(to: .zero)
+            nsView.reflectScrolledClipView(nsView.contentView)
+        }
     }
 
     func makeCoordinator() -> Coordinator {
@@ -182,10 +197,12 @@ struct ReadOnlyTextView: NSViewRepresentable {
     final class Coordinator: NSObject, NSTextViewDelegate {
         @Binding var text: String
         var isFocused: Binding<Bool>?
+        var lastScrollResetToken: Int
 
         init(text: Binding<String>, isFocused: Binding<Bool>?) {
             _text = text
             self.isFocused = isFocused
+            self.lastScrollResetToken = 0
         }
 
         func textDidBeginEditing(_ notification: Notification) {
