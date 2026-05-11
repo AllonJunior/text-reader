@@ -15,6 +15,7 @@ import AppKit
 #endif
 
 struct ContentView: View {
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @State private var textToRead = ""
     @State private var pagedDocument: PagedDocument = .empty
     @State private var currentPageIndex = 0
@@ -36,6 +37,7 @@ struct ContentView: View {
     @State private var fileLoadResultTitle = ""
     @State private var fileLoadResultMessage = ""
     @State private var isShowingFileLoadResult = false
+    @State private var jumpTopageIndexText = "跳转"
 
     @State private var isEditorFocused = false
 
@@ -65,7 +67,7 @@ struct ContentView: View {
     private var primaryButtonTitle: String {
         switch speechManager.speechState {
         case .idle:
-            return "开始阅读"
+            return "朗读"
         case .reading:
             return "暂停"
         case .paused:
@@ -123,6 +125,11 @@ struct ContentView: View {
         return "第 \(current) / \(pagedDocument.pageCount) 页"
     }
 
+    private var compactPageCounterText: String {
+        let current = pagedDocument.pageCount == 0 ? 0 : currentPageIndex + 1
+        return "\(current)/\(pagedDocument.pageCount)"
+    }
+
     private var enteredPageIndex: Int? {
         guard pagedDocument.pageCount > 0 else { return nil }
         let trimmed = pageJumpText.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -140,6 +147,26 @@ struct ContentView: View {
 
     private let editorFont: Font = .system(.body, design: .default)
     private let editorLineSpacing: CGFloat = 6
+    private let compactSectionSpacing: CGFloat = 14
+    private let compactCardCornerRadius: CGFloat = 16
+    private let compactButtonHeight: CGFloat = 36
+    private let compactShortButtonWidth: CGFloat = 64
+    private let compactLongButtonWidth: CGFloat = 70
+    private let compactJumpControlHeight: CGFloat = 30
+    private let compactPageFieldWidth: CGFloat = 48
+    private let regularPageFieldWidth: CGFloat = 40
+    private let regularPageJumpControlsWidth: CGFloat = 190
+    private let compactJumpRowLeadingInset: CGFloat = 6
+    private let compactBottomActionButtonHeight: CGFloat = 30
+    private let compactBottomActionRowLeadingInset: CGFloat = 10
+
+    private var usesCompactLayout: Bool {
+#if canImport(UIKit)
+        horizontalSizeClass == .compact
+#else
+        false
+#endif
+    }
 
     init(speechManager: SpeechManager? = nil, readerSettings: ReaderSettings? = nil) {
         let resolvedSettings = readerSettings ?? ReaderSettings()
@@ -156,16 +183,49 @@ struct ContentView: View {
     }
 
     var body: some View {
-        VStack(spacing: 16) {
-            HStack {
-                Spacer()
+        VStack(spacing: usesCompactLayout ? compactSectionSpacing : 16) {
+            if usesCompactLayout {
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack(alignment: .bottom, spacing: 10) {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("文本阅读器")
+                                .font(.title2.weight(.semibold))
 
-                VStack(spacing: 4) {
-                    Text("文本阅读器")
-                        .font(.largeTitle)
-                    Text(engineDescription)
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
+                            Text(engineDescription)
+                                .font(.callout)
+                                .foregroundStyle(.secondary)
+                        }
+
+                        Spacer(minLength: 12)
+
+                        VStack(spacing: 6) {
+                            Button {
+                                isShowingSettings = true
+                            } label: {
+                                Image(systemName: "slider.horizontal.3")
+                                    .font(.system(size: 18, weight: .semibold))
+                                    .frame(width: 48, height: 30)
+                            }
+#if canImport(UIKit)
+                            .buttonStyle(.plain)
+                            .background(
+                                RoundedRectangle(cornerRadius: 15, style: .continuous)
+                                    .fill(Color(UIColor.secondarySystemFill))
+                            )
+#else
+                            .buttonStyle(.plain)
+#endif
+
+                            Text(compactPageCounterText)
+                                .font(.caption2.monospacedDigit())
+                                .foregroundStyle(.secondary)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 2)
+                                .background(Color.secondary.opacity(0.08))
+                                .clipShape(Capsule())
+                        }
+                    }
+
                     if let playbackSourceDescription, speechManager.isPlaybackActive {
                         Text("当前句：\(playbackSourceDescription)")
                             .font(.caption)
@@ -174,22 +234,55 @@ struct ContentView: View {
                             .background(Color.accentColor.opacity(0.12))
                             .foregroundStyle(Color.accentColor)
                             .clipShape(Capsule())
+                            .fixedSize(horizontal: false, vertical: true)
                     }
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal)
+                .padding(.top, 8)
+            } else {
+                HStack(alignment: .top) {
+                    Spacer()
 
-                Spacer()
+                    VStack(spacing: 4) {
+                        Text("文本阅读器")
+                            .font(.largeTitle)
+                        Text(engineDescription)
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                        if let playbackSourceDescription, speechManager.isPlaybackActive {
+                            Text("当前句：\(playbackSourceDescription)")
+                                .font(.caption)
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 4)
+                                .background(Color.accentColor.opacity(0.12))
+                                .foregroundStyle(Color.accentColor)
+                                .clipShape(Capsule())
+                        }
+                    }
 
-                Button {
-                    isShowingSettings = true
-                } label: {
-                    Image(systemName: "slider.horizontal.3")
-                        .font(.title3)
-                        .frame(width: 36, height: 36)
+                    Spacer()
+
+                    VStack(spacing: 4) {
+                        Button {
+                            isShowingSettings = true
+                        } label: {
+                            Image(systemName: "slider.horizontal.3")
+                                .font(.title3)
+                                .frame(width: 36, height: 36)
+                        }
+                        .buttonStyle(.plain)
+
+#if canImport(AppKit)
+                        Text(compactPageCounterText)
+                            .font(.subheadline.monospacedDigit())
+                            .foregroundStyle(.secondary)
+#endif
+                    }
                 }
-                .buttonStyle(.plain)
+                .padding(.horizontal)
+                .padding(.top, 8)
             }
-            .padding(.horizontal)
-            .padding(.top, 8)
 
             ZStack(alignment: .topLeading) {
                 if trimmedText.isEmpty && !isEditorFocused {
@@ -251,119 +344,200 @@ struct ContentView: View {
 #elseif canImport(AppKit)
             .background(Color(NSColor.textBackgroundColor))
 #endif
-            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .clipShape(RoundedRectangle(cornerRadius: usesCompactLayout ? compactCardCornerRadius : 12, style: .continuous))
             .overlay(
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                RoundedRectangle(cornerRadius: usesCompactLayout ? compactCardCornerRadius : 12, style: .continuous)
                     .stroke(Color.gray.opacity(0.25), lineWidth: 1)
             )
-            .shadow(color: .black.opacity(0.06), radius: 8, x: 0, y: 2)
-            .padding(.top, 5)
+            .shadow(color: .black.opacity(usesCompactLayout ? 0.04 : 0.06), radius: usesCompactLayout ? 6 : 8, x: 0, y: 2)
+            .padding(.top, usesCompactLayout ? 2 : 5)
 
-            HStack(spacing: 12) {
-                Button("首页") {
-                    goToFirstPage()
-                }
-                .disabled(!canGoToPreviousPage)
-                .keyboardShortcut(.leftArrow, modifiers: [.command])
+            Group {
+                if usesCompactLayout {
+                    VStack(alignment: .leading, spacing: 10) {
+                        HStack(alignment: .center, spacing: 2) {
+                            HStack(spacing: 8) {
+                                compactPaginationButton("首页", minWidth: compactShortButtonWidth) {
+                                    goToFirstPage()
+                                }
+                                .disabled(!canGoToPreviousPage)
+                                .keyboardShortcut(.leftArrow, modifiers: [.command])
 
-                Button("上一页") {
-                    goToPreviousPage()
-                }
-                .disabled(!canGoToPreviousPage)
-                .keyboardShortcut(.leftArrow, modifiers: [.option])
+                                compactPaginationButton("上一页", minWidth: compactLongButtonWidth) {
+                                    goToPreviousPage()
+                                }
+                                .disabled(!canGoToPreviousPage)
+                                .keyboardShortcut(.leftArrow, modifiers: [.option])
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
 
-                Text(pageIndicatorText)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .monospacedDigit()
+                            compactPaginationButton(primaryButtonTitle, isPrimary: true) {
+                                switch speechManager.speechState {
+                                case .idle:
+                                    speechManager.startReading(text: currentPageText)
+                                case .reading:
+                                    speechManager.pauseReading()
+                                case .paused:
+                                    speechManager.resumeReading()
+                                }
+                            }
+                            .disabled(speechManager.speechState == .idle && trimmedCurrentPageText.isEmpty)
+                            .layoutPriority(1)
 
-                HStack(spacing: 8) {
-                    TextField("页码", text: $pageJumpText)
-#if canImport(AppKit)
-                        .textFieldStyle(.roundedBorder)
-                        .frame(width: 68)
-#else
-                        .textFieldStyle(.roundedBorder)
-                        .frame(width: 64)
-#endif
-                        .multilineTextAlignment(.trailing)
-                        .onSubmit {
-                            jumpToEnteredPage()
+                            HStack(spacing: 8) {
+                                compactPaginationButton("下一页", minWidth: compactLongButtonWidth) {
+                                    goToNextPage()
+                                }
+                                .disabled(!canGoToNextPage)
+                                .keyboardShortcut(.rightArrow, modifiers: [.option])
+
+                                compactPaginationButton("末页") {
+                                    goToLastPage()
+                                }
+                                .disabled(!canGoToNextPage)
+                                .keyboardShortcut(.rightArrow, modifiers: [.command])
+                            }
+                            .frame(maxWidth: .infinity, alignment: .trailing)
                         }
 
-                    Button("跳转") {
-                        jumpToEnteredPage()
+                        VStack(alignment: .leading, spacing: 8) {
+                            HStack(alignment: .center, spacing: 9) {
+                                compactPageJumpField()
+
+                                compactJumpButton()
+                                    .disabled(!canJumpToEnteredPage)
+
+                                Spacer(minLength: 8)
+
+                                pageCharacterCountLabel()
+                                    .frame(maxWidth: .infinity, alignment: .trailing)
+                            }
+                            .padding(.leading, compactJumpRowLeadingInset)
+                        }
                     }
-                    .disabled(!canJumpToEnteredPage)
-                }
+                } else {
+                    HStack(spacing: 10) {
+                        Button("首页") {
+                            goToFirstPage()
+                        }
+                        .disabled(!canGoToPreviousPage)
+                        .keyboardShortcut(.leftArrow, modifiers: [.command])
 
-                Button("下一页") {
-                    goToNextPage()
-                }
-                .disabled(!canGoToNextPage)
-                .keyboardShortcut(.rightArrow, modifiers: [.option])
+                        Button("上一页") {
+                            goToPreviousPage()
+                        }
+                        .disabled(!canGoToPreviousPage)
+                        .keyboardShortcut(.leftArrow, modifiers: [.option])
 
-                Button("末页") {
-                    goToLastPage()
-                }
-                .disabled(!canGoToNextPage)
-                .keyboardShortcut(.rightArrow, modifiers: [.command])
+                        Button(primaryButtonTitle) {
+                            switch speechManager.speechState {
+                            case .idle:
+                                speechManager.startReading(text: currentPageText)
+                            case .reading:
+                                speechManager.pauseReading()
+                            case .paused:
+                                speechManager.resumeReading()
+                            }
+                        }
+                        .disabled(speechManager.speechState == .idle && trimmedCurrentPageText.isEmpty)
 
-                Spacer()
+                        Button("下一页") {
+                            goToNextPage()
+                        }
+                        .disabled(!canGoToNextPage)
+                        .keyboardShortcut(.rightArrow, modifiers: [.option])
 
-                if let currentPage {
-                    Text("本页 \(currentPage.text.count) 字")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                        regularPageJumpControlsGroup()
+
+                        Button("末页") {
+                            goToLastPage()
+                        }
+                        .disabled(!canGoToNextPage)
+                        .keyboardShortcut(.rightArrow, modifiers: [.command])
+                    }
+                    .frame(maxWidth: .infinity)
                 }
             }
-            .padding(.horizontal, 4)
+            .padding(.horizontal, usesCompactLayout ? 16 : 4)
 
-            HStack {
-                Button("从文件加载") {
-                    presentTextFilePicker()
-                }
-                .padding()
-                .disabled(speechManager.isPlaybackActive)
+            Group {
+                if usesCompactLayout {
+                    VStack(spacing: 10) {
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 10) {
+                                compactBottomActionButton("加载文件") {
+                                    presentTextFilePicker()
+                                }
+                                .disabled(speechManager.isPlaybackActive)
 
-                Button("加载拼音 JSON") {
-                    isShowingPinyinOverridePicker = true
-                }
-                .padding()
-                .disabled(speechManager.isPlaybackActive)
+                                compactBottomActionButton("加载拼音 JSON") {
+                                    isShowingPinyinOverridePicker = true
+                                }
+                                .disabled(speechManager.isPlaybackActive)
 
-                if pinyinOverrideStore.loadedOverride != nil {
-                    Button("清除拼音覆盖") {
-                        pinyinOverrideStore.clear()
+                                if pinyinOverrideStore.loadedOverride != nil {
+                                    compactBottomActionButton("清除拼音覆盖") {
+                                        pinyinOverrideStore.clear()
+                                    }
+                                    .disabled(speechManager.isPlaybackActive)
+                                }
+
+                                compactBottomActionButton(isExportingAudio ? "导出中…" : "导出音频", prominent: true) {
+                                    exportComparisonAudio()
+                                }
+                                .disabled(trimmedText.isEmpty || speechManager.isPlaybackActive || isExportingAudio)
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.leading, compactBottomActionRowLeadingInset)
+                        }
+
+                        HStack(spacing: 10) {
+                            if speechManager.isPlaybackActive {
+                                Button("停止") {
+                                    speechManager.stopReading()
+                                }
+                                .frame(maxWidth: .infinity)
+                                .buttonStyle(.borderedProminent)
+                                .tint(.red)
+                            }
+                        }
                     }
-                    .padding()
-                    .disabled(speechManager.isPlaybackActive)
-                }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                } else {
+                    HStack {
+                        Button("加载文件") {
+                            presentTextFilePicker()
+                        }
+                        .padding()
+                        .disabled(speechManager.isPlaybackActive)
 
-                Button(isExportingAudio ? "导出中…" : "导出对比音频") {
-                    exportComparisonAudio()
-                }
-                .padding()
-                .disabled(trimmedText.isEmpty || speechManager.isPlaybackActive || isExportingAudio)
+                        Button("加载拼音 JSON") {
+                            isShowingPinyinOverridePicker = true
+                        }
+                        .padding()
+                        .disabled(speechManager.isPlaybackActive)
 
-                Button(primaryButtonTitle) {
-                    switch speechManager.speechState {
-                    case .idle:
-                        speechManager.startReading(text: currentPageText)
-                    case .reading:
-                        speechManager.pauseReading()
-                    case .paused:
-                        speechManager.resumeReading()
+                        if pinyinOverrideStore.loadedOverride != nil {
+                            Button("清除拼音覆盖") {
+                                pinyinOverrideStore.clear()
+                            }
+                            .padding()
+                            .disabled(speechManager.isPlaybackActive)
+                        }
+
+                        Button(isExportingAudio ? "导出中…" : "导出音频") {
+                            exportComparisonAudio()
+                        }
+                        .padding()
+                        .disabled(trimmedText.isEmpty || speechManager.isPlaybackActive || isExportingAudio)
+
+                        if speechManager.isPlaybackActive {
+                            Button("停止") {
+                                speechManager.stopReading()
+                            }
+                            .padding()
+                        }
                     }
-                }
-                .padding()
-                .disabled(speechManager.speechState == .idle && trimmedCurrentPageText.isEmpty)
-
-                if speechManager.isPlaybackActive {
-                    Button("停止") {
-                        speechManager.stopReading()
-                    }
-                    .padding()
                 }
             }
 
@@ -398,6 +572,10 @@ struct ContentView: View {
         }
         .sheet(isPresented: $isShowingSettings) {
             ReaderSettingsView(settings: readerSettings)
+#if canImport(UIKit)
+                .presentationDetents([.large])
+                .presentationDragIndicator(.visible)
+#endif
         }
         .alert(exportResultTitle, isPresented: $isShowingExportResult) {
             Button("知道了", role: .cancel) {}
@@ -599,6 +777,147 @@ struct ContentView: View {
     private func syncPageJumpField() {
         let displayPage = pagedDocument.pageCount == 0 ? 1 : currentPageIndex + 1
         pageJumpText = String(displayPage)
+    }
+
+    @ViewBuilder
+    private func compactPageJumpField() -> some View {
+        TextField("页码", text: $pageJumpText)
+            .textFieldStyle(.plain)
+            .frame(width: compactPageFieldWidth, height: compactJumpControlHeight)
+            .font(.callout.monospacedDigit())
+            .multilineTextAlignment(.center)
+            .padding(.horizontal, 4)
+#if canImport(UIKit)
+            .background(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(Color(UIColor.secondarySystemBackground))
+            )
+#else
+            .background(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(Color.secondary.opacity(0.08))
+            )
+#endif
+            .overlay(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .stroke(Color.gray.opacity(0.22), lineWidth: 1)
+            )
+            .onSubmit {
+                jumpToEnteredPage()
+            }
+    }
+
+    @ViewBuilder
+    private func pageCharacterCountLabel() -> some View {
+        if let currentPage {
+            Text("本页 \(currentPage.text.count) 字")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .fixedSize(horizontal: true, vertical: false)
+        }
+    }
+
+    @ViewBuilder
+    private func regularPageJumpControlsGroup() -> some View {
+        HStack(spacing: 8) {
+            TextField("页码", text: $pageJumpText)
+#if canImport(AppKit)
+                .textFieldStyle(.roundedBorder)
+                .frame(width: regularPageFieldWidth)
+#else
+                .textFieldStyle(.roundedBorder)
+                .frame(width: regularPageFieldWidth)
+#endif
+                .multilineTextAlignment(.trailing)
+                .onSubmit {
+                    jumpToEnteredPage()
+                }
+
+            Button(jumpTopageIndexText) {
+                jumpToEnteredPage()
+            }
+            .disabled(!canJumpToEnteredPage)
+            .frame(width: compactLongButtonWidth)
+
+            pageCharacterCountLabel()
+        }
+        .frame(width: regularPageJumpControlsWidth, alignment: .trailing)
+    }
+
+    @ViewBuilder
+    private func compactJumpButton() -> some View {
+#if canImport(UIKit)
+        Button(jumpTopageIndexText) {
+            jumpToEnteredPage()
+        }
+        .font(.callout.weight(.medium))
+        .frame(width: compactLongButtonWidth, height: compactJumpControlHeight)
+        .buttonStyle(.bordered)
+        .controlSize(.small)
+#else
+        Button(jumpTopageIndexText) {
+            jumpToEnteredPage()
+        }
+        .font(.callout.weight(.medium))
+        .frame(width: compactLongButtonWidth, height: compactJumpControlHeight)
+#endif
+    }
+
+    @ViewBuilder
+    private func compactBottomActionButton(_ title: String, prominent: Bool = false, action: @escaping () -> Void) -> some View {
+#if canImport(UIKit)
+        if prominent {
+            Button(title, action: action)
+                .font(.footnote.weight(.medium))
+                .frame(minHeight: compactBottomActionButtonHeight)
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
+        } else {
+            Button(title, action: action)
+                .font(.footnote.weight(.medium))
+                .frame(minHeight: compactBottomActionButtonHeight)
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+        }
+#else
+        Button(title, action: action)
+            .font(.footnote.weight(.medium))
+            .frame(minHeight: compactBottomActionButtonHeight)
+#endif
+    }
+
+    @ViewBuilder
+    private func compactPaginationButton(_ title: String, isPrimary: Bool = false, minWidth: CGFloat? = nil, action: @escaping () -> Void) -> some View {
+        let resolvedMinWidth = minWidth ?? (isPrimary ? 72 : 64)
+#if canImport(UIKit)
+        if isPrimary {
+            Button(title, action: action)
+                .font(.callout.weight(.semibold))
+                .lineLimit(1)
+                .minimumScaleFactor(0.85)
+                .fixedSize(horizontal: true, vertical: false)
+                .frame(minWidth: resolvedMinWidth, minHeight: compactButtonHeight)
+                .buttonStyle(.borderedProminent)
+                .controlSize(.regular)
+        } else {
+            Button(title, action: action)
+                .font(.callout.weight(.medium))
+                .lineLimit(1)
+                .minimumScaleFactor(0.85)
+                .fixedSize(horizontal: true, vertical: false)
+                .frame(minWidth: resolvedMinWidth, minHeight: compactButtonHeight)
+                .buttonStyle(.bordered)
+                .controlSize(.regular)
+        }
+#else
+        Button(title, action: action)
+            .font(.callout.weight(isPrimary ? .semibold : .medium))
+            .lineLimit(1)
+            .minimumScaleFactor(0.85)
+            .fixedSize(horizontal: true, vertical: false)
+            .frame(minWidth: resolvedMinWidth, minHeight: compactButtonHeight)
+#endif
     }
 }
 
