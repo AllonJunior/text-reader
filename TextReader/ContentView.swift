@@ -244,7 +244,7 @@ struct ContentView: View {
                 HStack(alignment: .top) {
                     Spacer()
 
-                    VStack(spacing: 4) {
+                    VStack(spacing: 6) {
                         Text("文本阅读器")
                             .font(.largeTitle)
                         Text(engineDescription)
@@ -263,7 +263,7 @@ struct ContentView: View {
 
                     Spacer()
 
-                    VStack(spacing: 4) {
+                    VStack(spacing: 1) {
                         Button {
                             isShowingSettings = true
                         } label: {
@@ -275,8 +275,9 @@ struct ContentView: View {
 
 #if canImport(AppKit)
                         Text(compactPageCounterText)
-                            .font(.subheadline.monospacedDigit())
+                            .font(.caption2.monospacedDigit())
                             .foregroundStyle(.secondary)
+                            .clipShape(Capsule())
 #endif
                     }
                 }
